@@ -39,35 +39,42 @@ httpGet u = do
     return body
 
 
-pageLinks ts = map snd $ S.toList attributes where
-    links = filter isLink ts
-    attributes = foldr (\(TagOpen s atts) acc -> S.union acc $ S.fromList atts) S.empty links
-    isLink a = case a of
-        (TagOpen "a" _) -> True
-        _               -> False
+pageLinks ts =  S.toList attributes where
+    attributes = foldr getHrefs S.empty $ concat $ map getAtts ts
+    getAtts (TagOpen s atts) = atts
+    getAtts _ = []
+    getHrefs (att, val) acc = case att of
+            "href" -> S.insert val acc
+            _      -> acc 
+                             
 
 
 -- Basic crawler
 crawler ch = do
     c@(CrawlerRequest maxD d page) <- readChan ch
     id <- myThreadId
-    putStrLn $ show id ++ " -- " ++ show c
     case (d < maxD) of
         True -> do
             pageText <- httpGet (show page)
             case pageText of
                 Nothing -> crawler ch
                 Just s -> taskWorkers ch c s
+            putStrLn $ show id ++ " -- " ++ show c
             crawler ch
-        False -> do crawler ch
+        False -> do 
+            putStrLn $ show id ++ " -- " ++ show c ++ " -- Dead Link"
+            crawler ch
 
 
 taskWorkers ch base page = do
     let rLinks = catMaybes $ map parseURI $ pageLinks $ parseTags page
-        links = map (\u -> uriDefaultTo u (uri base)) rLinks
+        allLinks = map (\u -> uriDefaultTo u (uri base)) rLinks
+        domainLinks = allLinks-- filter (\l -> ((==) (auth l) $  auth $ uri base)) allLinks
         depth' = 1 + depth base
-        reqs = map (\u -> base {uri = u, depth = depth'}) links
+        auth = liftM uriRegName . uriAuthority
+        reqs = map (\u -> base {uri = u, depth = depth'}) domainLinks
     mapM_ (writeChan ch) reqs
+    putStrLn $ "\t--> Number of links: " ++ (show $ length reqs)
 
 
 -- Thread to monitor other threads, write to disk, etc.
@@ -115,5 +122,6 @@ main = do
     -- Block until exit signal is received or threads are done
     takeMVar stopMv
     putStrLn "everything is super"
+    exitWith ExitSuccess  --Threads not done?  Too bad.
 
 

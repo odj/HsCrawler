@@ -7,6 +7,7 @@ import System.Posix.Signals
 import System.IO
 import System.Exit
 import Control.Monad
+import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
@@ -34,15 +35,17 @@ instance Show CrawlerRequest where
 httpGet u = do
     res <- (try $ simpleHTTP $ getRequest u)
     body <- case res of
-        Left (SomeException e) -> do return Nothing  -- No soup for you!
+        Left (SomeException e) -> do 
+            return Nothing  -- No soup for you!
         Right b -> do liftM Just $ getResponseBody b
     return body
 
 
 pageLinks ts =  S.toList attributes where
     attributes = foldr getHrefs S.empty $ concat $ map getAtts ts
-    getAtts (TagOpen s atts) = atts
-    getAtts _ = []
+    getAtts t = case t of
+        (TagOpen s ats) -> ats
+        _               -> []
     getHrefs (att, val) acc = case att of
             "href" -> S.insert val acc
             _      -> acc 
@@ -57,19 +60,25 @@ crawler ch = do
         True -> do
             pageText <- httpGet (show page)
             case pageText of
-                Nothing -> crawler ch
-                Just s -> taskWorkers ch c s
-            putStrLn $ show id ++ " -- " ++ show c
-            crawler ch
-        False -> do 
-            putStrLn $ show id ++ " -- " ++ show c ++ " -- Dead Link"
-            crawler ch
+                Nothing -> do putStrLn $ show id ++ " -- " ++ show c ++ " -- Dead link"
+                              crawler ch
+                Just s -> do taskWorkers ch c s
+                             putStrLn $ show id ++ " -- " ++ show c
+                             crawler ch
+        False -> do crawler ch
 
 
+Just pharmash = parseURI "http://www.pharmash.com"
+
+parseTag base t = u >>= (rel base) where
+  rel a b = nonStrictRelativeTo b a
+  u = parseURI t <|> parseRelativeReference t
+
+
+taskWorkers :: (Chan CrawlerRequest) -> CrawlerRequest -> String -> IO ()
 taskWorkers ch base page = do
-    let rLinks = catMaybes $ map parseURI $ pageLinks $ parseTags page
-        allLinks = map (\u -> uriDefaultTo u (uri base)) rLinks
-        domainLinks = allLinks-- filter (\l -> ((==) (auth l) $  auth $ uri base)) allLinks
+    let rLinks = catMaybes $ map (parseTag $ uri base) $ pageLinks $ parseTags page
+        domainLinks = filter (\l -> ((==) (auth l) $  auth $ uri base)) rLinks
         depth' = 1 + depth base
         auth = liftM uriRegName . uriAuthority
         reqs = map (\u -> base {uri = u, depth = depth'}) domainLinks

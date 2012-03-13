@@ -58,21 +58,31 @@ reportFound found page= do
     putStrLn $ "\t--> Total Found: " ++ (show $ S.size s')
     putMVar found s'
 
+isVisited found page = do
+    s <- takeMVar found
+    let visited = S.member (show page) s
+    putMVar found s
+    return visited
+    
+
 -- Basic crawler
 crawler ch = do
     c@(CrawlerRequest maxD d page found) <- readChan ch
     id <- myThreadId
-    case (d < maxD) of
-        True -> do
-            pageText <- httpGet (show page)
-            case pageText of
-                Nothing -> do putStrLn $ show id ++ " -- " ++ show c ++ " -- Dead link"
-                              crawler ch
-                Just s -> do reportFound found page
-                             taskWorkers ch c s
-                             putStrLn $ show id ++ " -- " ++ show c
-                             crawler ch
-        False -> do crawler ch
+    visited <- isVisited found page
+    case (visited) of
+        True  -> crawler ch
+        False ->  case (d < maxD) of
+            True -> do
+                pageText <- httpGet (show page)
+                case pageText of
+                    Nothing -> do putStrLn $ show id ++ " -- " ++ show c ++ " -- Dead link"
+                                  crawler ch
+                    Just s -> do reportFound found page
+                                 taskWorkers ch c s
+                                 putStrLn $ show id ++ " -- " ++ show c
+                                 crawler ch
+            False -> do crawler ch
 
 
 Just pharmash = parseURI "http://www.pharmash.com"

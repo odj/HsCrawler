@@ -23,14 +23,16 @@ data CrawlerRequest = CrawlerRequest
     maxDepth :: Integer
   , depth    :: Integer
   , uri      :: URI
+  , found    :: MVar (S.Set String)
   } deriving (Eq)
 
 
 instance Show CrawlerRequest where
-    show (CrawlerRequest mx d u)  = "(" ++ (show d)
+    show (CrawlerRequest mx d u found)  = "(" ++ (show d)
                                         ++ "/" ++ (show mx)
                                         ++ ")" ++ " -- "
                                         ++ (show u)
+
 
 httpGet u = do
     res <- (try $ simpleHTTP $ getRequest u)
@@ -50,11 +52,15 @@ pageLinks ts =  S.toList attributes where
             "href" -> S.insert val acc
             _      -> acc 
                              
-
+reportFound found page= do
+    s <- takeMVar found
+    let s' = S.insert (show page) s
+    putStrLn $ "\t--> Total Found: " ++ (show $ S.size s')
+    putMVar found s'
 
 -- Basic crawler
 crawler ch = do
-    c@(CrawlerRequest maxD d page) <- readChan ch
+    c@(CrawlerRequest maxD d page found) <- readChan ch
     id <- myThreadId
     case (d < maxD) of
         True -> do
@@ -62,7 +68,8 @@ crawler ch = do
             case pageText of
                 Nothing -> do putStrLn $ show id ++ " -- " ++ show c ++ " -- Dead link"
                               crawler ch
-                Just s -> do taskWorkers ch c s
+                Just s -> do reportFound found page
+                             taskWorkers ch c s
                              putStrLn $ show id ++ " -- " ++ show c
                              crawler ch
         False -> do crawler ch
@@ -120,17 +127,22 @@ main = do
 
     -- Launch the worker threads
     ch <- newChan
+    outputSet <- newEmptyMVar
+    putMVar outputSet S.empty
     replicateM_ threads $ forkIO $ crawler ch
     forkIO $ idle stopMv
 
     -- Kickoff the first thread with a task
     case parseURI startPage of
         Nothing -> usage
-        Just uri -> writeChan ch $ CrawlerRequest (fromIntegral maxD) 0 uri
+        Just uri -> writeChan ch $ CrawlerRequest (fromIntegral maxD) 0 uri outputSet
 
     -- Block until exit signal is received or threads are done
     takeMVar stopMv
     putStrLn "everything is super"
+    grandTotal <- takeMVar outputSet
+    putStrLn $ "#### TOTAL FOUND: " ++ (show $ S.size grandTotal) ++ "\n\n"
+    putStrLn $ show grandTotal
     exitWith ExitSuccess  --Threads not done?  Too bad.
 
 

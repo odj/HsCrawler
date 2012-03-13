@@ -55,13 +55,13 @@ pageLinks ts =  S.toList attributes where
 reportFound found page= do
     s <- takeMVar found
     let s' = S.insert (show page) s
-    putStrLn $ "\t--> Total Found: " ++ (show $ S.size s')
     putMVar found s'
+    putStrLn $ "\t--> Total Found: " ++ (show $ S.size s')
 
 isVisited found page = do
     s <- takeMVar found
-    let visited = S.member (show page) s
     putMVar found s
+    let visited = S.member (show page) s
     return visited
     
 

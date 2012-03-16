@@ -1,3 +1,4 @@
 #!/bin/bash
 
 ghc -threaded -rtsopts -O2 --make HsCrawler.hs -o crawl
+ghc -threaded -rtsopts -O2 --make Philosophy.hs -o phil

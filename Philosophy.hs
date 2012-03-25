@@ -16,6 +16,8 @@ import Network.HTTP
 import Network.Browser (uriDefaultTo)
 import Network.URI
 import Text.HTML.TagSoup
+import Text.HTML.TagSoup.Tree
+import Text.HTML.TagSoup.Match
 
 
 -- Unblock exit
@@ -28,18 +30,29 @@ usage (_::SomeException) = do
 
 nextPage page depth stop  = do
     res <- (try $ simpleHTTP $ getRequest $ show page)
-    body <- case res of
+    case res of
         Left (SomeException e) -> do 
             putStrLn $ "Failed to load page : " ++ (show page)
             putMVar stop True
-            return ()
         Right b -> do 
             putStrLn $ (show depth) ++ " -- " ++
                        (show page)
-    nextPage (topLink body) (depth + 1) stop
+            body <- getResponseBody b
+            nextPage (topLink body) (depth + 1) stop
+
 
 topLink body = uri where
+    tags = parseTags body
+    tree = tagTree tags
     Just uri = parseURI "http://www.pharmash.com"
+
+
+isPhilosphy uri = (show uri) == "http://en.wikipedia.org/wiki/Philosophy"
+getPhilosophy = simpleHTTP $ getRequest "http://en.wikipedia.org/wiki/Philosophy" 
+isMainBody = anyAttrValue ((==) "mw-content-text") --A wikipedia specificy ID attribute
+mainBodyTree ts = [t | t@(TagBranch "div" a _) <- universeTree ts , isMainBody a]
+treeParagraph ts = [t | t@(TagBranch "p" _ _) <- ts]
+firstLink ts = [t | t@(TagBranch "a" _ _) <- universeTree ts]
 
 
 

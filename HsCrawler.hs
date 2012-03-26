@@ -85,6 +85,8 @@ crawler ch = do
     crawler ch
 
 
+
+
 Just pharmash = parseURI "http://www.pharmash.com"
 
 parseTag base t = u >>= (rel base) where
